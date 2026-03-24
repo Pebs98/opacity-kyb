@@ -4,12 +4,11 @@ import { Suspense, useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { FileUploader } from "@/components/upload/FileUploader";
 
-type Step = "company" | "documents" | "ubos" | "review";
+type Step = "company" | "documents" | "review";
 
 const STEPS: { key: Step; label: string }[] = [
   { key: "company", label: "Company Info" },
   { key: "documents", label: "Upload Documents" },
-  { key: "ubos", label: "Known UBOs" },
   { key: "review", label: "Review & Submit" },
 ];
 
@@ -19,12 +18,6 @@ export default function ApplyPageWrapper() {
       <ApplyPage />
     </Suspense>
   );
-}
-
-interface KnownUbo {
-  name: string;
-  ownershipPct: string;
-  relationship: string;
 }
 
 function ApplyPage() {
@@ -45,11 +38,6 @@ function ApplyPage() {
 
   // Step 2: Documents tracked via FileUploader
   const [uploadedDocIds, setUploadedDocIds] = useState<string[]>([]);
-
-  // Step 3: Known UBOs (optional self-declaration)
-  const [knownUbos, setKnownUbos] = useState<KnownUbo[]>([
-    { name: "", ownershipPct: "", relationship: "" },
-  ]);
 
   // Load existing application if resuming
   useEffect(() => {
@@ -106,7 +94,7 @@ function ApplyPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ applicationId }),
       });
-      // Navigate to review
+      // Navigate to review (which now includes UBO sign-off)
       router.push(`/review/${applicationId}`);
     } finally {
       setLoading(false);
@@ -233,99 +221,9 @@ function ApplyPage() {
               Back
             </button>
             <button
-              onClick={() => setStep("ubos")}
+              onClick={() => setStep("review")}
               disabled={uploadedDocIds.length === 0}
               className="rounded-lg bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
-            >
-              Next: Known UBOs
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 3: Known UBOs */}
-      {step === "ubos" && (
-        <div className="max-w-lg space-y-6">
-          <div>
-            <h2 className="text-xl font-bold text-zinc-900">
-              Known Ultimate Beneficial Owners
-            </h2>
-            <p className="mt-1 text-sm text-zinc-500">
-              Optional: declare known UBOs. This helps validate what our system
-              extracts from your documents.
-            </p>
-          </div>
-          <div className="space-y-4">
-            {knownUbos.map((ubo, i) => (
-              <div
-                key={i}
-                className="space-y-3 rounded-lg border border-zinc-200 bg-white p-4"
-              >
-                <input
-                  type="text"
-                  value={ubo.name}
-                  onChange={(e) => {
-                    const updated = [...knownUbos];
-                    updated[i] = { ...updated[i], name: e.target.value };
-                    setKnownUbos(updated);
-                  }}
-                  placeholder="Full name"
-                  className="block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                />
-                <div className="flex gap-3">
-                  <input
-                    type="text"
-                    value={ubo.ownershipPct}
-                    onChange={(e) => {
-                      const updated = [...knownUbos];
-                      updated[i] = {
-                        ...updated[i],
-                        ownershipPct: e.target.value,
-                      };
-                      setKnownUbos(updated);
-                    }}
-                    placeholder="Ownership %"
-                    className="block w-24 rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  />
-                  <input
-                    type="text"
-                    value={ubo.relationship}
-                    onChange={(e) => {
-                      const updated = [...knownUbos];
-                      updated[i] = {
-                        ...updated[i],
-                        relationship: e.target.value,
-                      };
-                      setKnownUbos(updated);
-                    }}
-                    placeholder="Relationship (e.g., Director, Shareholder)"
-                    className="block flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-            ))}
-            <button
-              onClick={() =>
-                setKnownUbos([
-                  ...knownUbos,
-                  { name: "", ownershipPct: "", relationship: "" },
-                ])
-              }
-              className="text-sm font-medium text-blue-600 hover:text-blue-500"
-            >
-              + Add another UBO
-            </button>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setStep("documents")}
-              className="rounded-lg border border-zinc-300 px-6 py-2.5 text-sm font-medium text-zinc-700 hover:bg-white"
-            >
-              Back
-            </button>
-            <button
-              onClick={() => setStep("review")}
-              className="rounded-lg bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white hover:bg-zinc-800"
             >
               Next: Review
             </button>
@@ -333,7 +231,7 @@ function ApplyPage() {
         </div>
       )}
 
-      {/* Step 4: Review & Submit */}
+      {/* Step 3: Review & Submit for Extraction */}
       {step === "review" && (
         <div className="max-w-lg space-y-6">
           <div>
@@ -341,8 +239,9 @@ function ApplyPage() {
               Review & Submit
             </h2>
             <p className="mt-1 text-sm text-zinc-500">
-              Review your information before submitting for UBO extraction and
-              analysis.
+              Review your information before submitting. Our system will analyze
+              your documents to identify the ownership structure and UBOs. You
+              will then review and sign off on the results.
             </p>
           </div>
           <div className="space-y-4 rounded-lg border border-zinc-200 bg-white p-6">
@@ -374,18 +273,10 @@ function ApplyPage() {
               </span>
               <p className="text-sm text-zinc-900">{uploadedDocIds.length}</p>
             </div>
-            <div>
-              <span className="text-xs font-medium text-zinc-500">
-                Declared UBOs
-              </span>
-              <p className="text-sm text-zinc-900">
-                {knownUbos.filter((u) => u.name).length}
-              </p>
-            </div>
           </div>
           <div className="flex items-center gap-4">
             <button
-              onClick={() => setStep("ubos")}
+              onClick={() => setStep("documents")}
               className="rounded-lg border border-zinc-300 px-6 py-2.5 text-sm font-medium text-zinc-700 hover:bg-white"
             >
               Back
@@ -395,7 +286,7 @@ function ApplyPage() {
               disabled={loading}
               className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
             >
-              {loading ? "Processing..." : "Submit for Analysis"}
+              {loading ? "Analyzing Documents..." : "Submit for Analysis"}
             </button>
           </div>
         </div>

@@ -6,7 +6,7 @@ import {
   extractDocumentText,
   buildOrgStructure,
 } from "@/lib/extraction";
-import { getDownloadUrl } from "@/lib/storage";
+import { readFile } from "@/lib/storage";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -45,10 +45,8 @@ export async function POST(req: NextRequest) {
     if (doc.extractionStatus === "DONE") continue;
 
     try {
-      // Download file from S3
-      const downloadUrl = await getDownloadUrl(doc.fileUrl);
-      const response = await fetch(downloadUrl);
-      const buffer = Buffer.from(await response.arrayBuffer());
+      // Read file from local storage
+      const buffer = await readFile(doc.fileUrl);
 
       // Extract text from document
       await extractDocumentText(doc.id, buffer, doc.fileType);
@@ -57,6 +55,7 @@ export async function POST(req: NextRequest) {
       const result = await extractFromDocument(doc.id, applicationId);
       results.push({ documentId: doc.id, status: "done", result });
     } catch (error) {
+      console.error(`Extraction error for ${doc.fileName}:`, error);
       results.push({
         documentId: doc.id,
         status: "error",

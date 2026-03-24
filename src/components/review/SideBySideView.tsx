@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { HighlightedText } from "./HighlightedText";
 import { OrgChart } from "./OrgChart";
+import { PdfViewer } from "./PdfViewer";
 
 interface Entity {
   id: string;
@@ -19,6 +20,7 @@ interface Entity {
 interface DocumentData {
   id: string;
   fileName: string;
+  fileType: string;
   extractedText: string | null;
 }
 
@@ -59,29 +61,48 @@ export function SideBySideView({
 }: SideBySideViewProps) {
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [activeDocIndex, setActiveDocIndex] = useState(0);
+  // "pdf" = rendered PDF, "extracted" = highlighted extracted text
+  const [viewMode, setViewMode] = useState<"pdf" | "extracted">("pdf");
 
   const handleEntityClick = useCallback((entityId: string) => {
     setSelectedEntityId(entityId);
-    // Scroll to source text highlight in document panel
-    const sourceEl = document.getElementById(`source-${entityId}`);
-    if (sourceEl) {
-      sourceEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    // If viewing extracted text, scroll to source highlight
+    if (viewMode === "extracted") {
+      const sourceEl = document.getElementById(`source-${entityId}`);
+      if (sourceEl) {
+        sourceEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
     }
-  }, []);
+  }, [viewMode]);
 
   const activeDoc = documents[activeDocIndex];
+  const isPdf = activeDoc?.fileType === "application/pdf";
 
   return (
     <div className="flex h-[calc(100vh-12rem)] flex-col gap-4">
-      {/* Legend */}
+      {/* Legend — color coding explained */}
       <div className="flex flex-wrap items-center gap-4 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-xs">
-        <span className="font-medium text-zinc-600">Entity Types:</span>
+        <span className="font-medium text-zinc-600">Confidence:</span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-3 w-3 rounded border border-green-400 bg-green-100" />
+          High (&gt;70%)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-3 w-3 rounded border border-amber-400 bg-amber-100" />
+          Medium (40-70%)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-3 w-3 rounded border border-red-400 bg-red-100" />
+          Low (&lt;40%)
+        </span>
+        <span className="mx-2 h-4 border-l border-zinc-300" />
+        <span className="font-medium text-zinc-600">Entity:</span>
         <span className="flex items-center gap-1">
           <span className="inline-block h-3 w-3 rounded border border-blue-300 bg-blue-100" />
           Company
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block h-3 w-3 rounded border border-green-300 bg-green-100" />
+          <span className="inline-block h-3 w-3 rounded border border-emerald-300 bg-emerald-100" />
           Individual
         </span>
         <span className="flex items-center gap-1">
@@ -103,31 +124,60 @@ export function SideBySideView({
         {/* Left: Source Documents */}
         <div className="flex w-1/2 flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white">
           <div className="border-b border-zinc-200 px-4 py-2">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-zinc-900">
-                Source Documents
-              </h3>
-              {documents.length > 1 && (
-                <div className="flex gap-1">
-                  {documents.map((doc, i) => (
-                    <button
-                      key={doc.id}
-                      onClick={() => setActiveDocIndex(i)}
-                      className={`rounded px-2 py-0.5 text-xs ${
-                        i === activeDocIndex
-                          ? "bg-zinc-900 text-white"
-                          : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
-                      }`}
-                    >
-                      {doc.fileName}
-                    </button>
-                  ))}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-zinc-900">
+                  Source Documents
+                </h3>
+                {documents.length > 1 && (
+                  <div className="flex gap-1">
+                    {documents.map((doc, i) => (
+                      <button
+                        key={doc.id}
+                        onClick={() => setActiveDocIndex(i)}
+                        className={`rounded px-2 py-0.5 text-xs ${
+                          i === activeDocIndex
+                            ? "bg-zinc-900 text-white"
+                            : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                        }`}
+                      >
+                        {doc.fileName}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* View mode toggle */}
+              {isPdf && (
+                <div className="flex rounded-md border border-zinc-200 text-xs">
+                  <button
+                    onClick={() => setViewMode("pdf")}
+                    className={`px-3 py-1 ${
+                      viewMode === "pdf"
+                        ? "bg-zinc-900 text-white"
+                        : "text-zinc-600 hover:bg-zinc-50"
+                    } rounded-l-md`}
+                  >
+                    PDF
+                  </button>
+                  <button
+                    onClick={() => setViewMode("extracted")}
+                    className={`px-3 py-1 ${
+                      viewMode === "extracted"
+                        ? "bg-zinc-900 text-white"
+                        : "text-zinc-600 hover:bg-zinc-50"
+                    } rounded-r-md`}
+                  >
+                    Extracted Text
+                  </button>
                 </div>
               )}
             </div>
           </div>
           <div className="flex-1 overflow-auto p-4">
-            {activeDoc?.extractedText ? (
+            {viewMode === "pdf" && isPdf ? (
+              <PdfViewer documentId={activeDoc.id} />
+            ) : activeDoc?.extractedText ? (
               <HighlightedText
                 text={activeDoc.extractedText}
                 entities={entities.filter(

@@ -44,6 +44,13 @@ const TYPE_BORDERS: Record<string, string> = {
   OTHER: "#d4d4d8",
 };
 
+// Confidence-based border highlight for the node outline
+function getConfidenceBorder(confidence: number): string {
+  if (confidence > 0.7) return "#22c55e"; // green
+  if (confidence > 0.4) return "#f59e0b"; // amber
+  return "#ef4444"; // red
+}
+
 function EntityNode({ data }: { data: { entity: OrgEntity; selected: boolean; onClick: () => void } }) {
   const { entity, selected, onClick } = data;
   const bgColor = TYPE_COLORS[entity.type] || TYPE_COLORS.OTHER;
@@ -59,6 +66,9 @@ function EntityNode({ data }: { data: { entity: OrgEntity; selected: boolean; on
         backgroundColor: bgColor,
         borderColor: entity.isUbo ? "#ef4444" : borderColor,
         minWidth: 180,
+        boxShadow: `0 0 0 2px ${getConfidenceBorder(entity.confidence)}20, 0 1px 3px rgba(0,0,0,0.1)`,
+        outline: `2px solid ${getConfidenceBorder(entity.confidence)}`,
+        outlineOffset: 2,
       }}
     >
       <Handle type="target" position={Position.Top} className="!bg-zinc-400" />

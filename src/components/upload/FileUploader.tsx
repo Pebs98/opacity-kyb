@@ -37,28 +37,21 @@ export function FileUploader({
       ]);
 
       try {
-        // Get presigned URL
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("applicationId", applicationId);
+
         const res = await fetch("/api/upload", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            applicationId,
-            fileName: file.name,
-            fileType: file.type,
-            fileSize: file.size,
-          }),
+          body: formData,
         });
 
-        if (!res.ok) throw new Error("Failed to get upload URL");
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "Upload failed");
+        }
 
-        const { documentId, uploadUrl } = await res.json();
-
-        // Upload to S3
-        await fetch(uploadUrl, {
-          method: "PUT",
-          headers: { "Content-Type": file.type },
-          body: file,
-        });
+        const { documentId } = await res.json();
 
         setFiles((prev) =>
           prev.map((f) =>
@@ -67,7 +60,8 @@ export function FileUploader({
         );
 
         onUploadComplete?.(documentId);
-      } catch {
+      } catch (error) {
+        console.error("Upload error:", error);
         setFiles((prev) =>
           prev.map((f) =>
             f.id === tempId ? { ...f, status: "error" } : f

@@ -17,6 +17,7 @@ interface AdminReviewClientProps {
   documents: {
     id: string;
     fileName: string;
+    fileType: string;
     extractedText: string | null;
   }[];
   entities: {

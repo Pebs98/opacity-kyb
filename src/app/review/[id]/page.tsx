@@ -49,6 +49,7 @@ export default async function ReviewPage({
       documents={application.documents.map((d) => ({
         id: d.id,
         fileName: d.fileName,
+        fileType: d.fileType,
         extractedText: d.extractedText,
       }))}
       entities={application.extractedEntities.map((e) => ({

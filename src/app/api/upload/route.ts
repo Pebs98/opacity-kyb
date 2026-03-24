@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getUploadUrl, buildStorageKey } from "@/lib/storage";
+import { buildStorageKey, saveFile } from "@/lib/storage";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -9,12 +9,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await req.json();
-  const { applicationId, fileName, fileType, fileSize } = body;
+  const formData = await req.formData();
+  const file = formData.get("file") as File | null;
+  const applicationId = formData.get("applicationId") as string | null;
 
-  if (!applicationId || !fileName || !fileType || !fileSize) {
+  if (!file || !applicationId) {
     return NextResponse.json(
-      { error: "Missing required fields" },
+      { error: "Missing file or applicationId" },
       { status: 400 }
     );
   }
@@ -31,24 +32,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const storageKey = buildStorageKey(applicationId, fileName);
-  const uploadUrl = await getUploadUrl(storageKey, fileType);
+  const storageKey = buildStorageKey(applicationId, file.name);
+  const buffer = Buffer.from(await file.arrayBuffer());
+  await saveFile(storageKey, buffer);
 
   // Create document record
   const document = await db.document.create({
     data: {
       applicationId,
-      fileName,
+      fileName: file.name,
       fileUrl: storageKey,
-      fileType,
-      fileSize,
+      fileType: file.type,
+      fileSize: file.size,
       extractionStatus: "PENDING",
     },
   });
 
   return NextResponse.json({
     documentId: document.id,
-    uploadUrl,
-    storageKey,
+    fileName: file.name,
   });
 }

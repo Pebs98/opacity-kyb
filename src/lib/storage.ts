@@ -1,38 +1,9 @@
-import {
-  S3Client,
-  PutObjectCommand,
-  GetObjectCommand,
-} from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { promises as fs } from "fs";
+import path from "path";
 
-const s3 = new S3Client({
-  region: process.env.S3_REGION || "auto",
-  endpoint: process.env.S3_ENDPOINT,
-  credentials: {
-    accessKeyId: process.env.S3_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || "",
-  },
-  forcePathStyle: true,
-});
-
-const BUCKET = process.env.S3_BUCKET || "opacity-kyb-docs";
-
-export async function getUploadUrl(key: string, contentType: string) {
-  const command = new PutObjectCommand({
-    Bucket: BUCKET,
-    Key: key,
-    ContentType: contentType,
-  });
-  return getSignedUrl(s3, command, { expiresIn: 600 });
-}
-
-export async function getDownloadUrl(key: string) {
-  const command = new GetObjectCommand({
-    Bucket: BUCKET,
-    Key: key,
-  });
-  return getSignedUrl(s3, command, { expiresIn: 3600 });
-}
+// Local filesystem storage for dev/testing
+// Replace with S3 for production
+const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 
 export function buildStorageKey(
   applicationId: string,
@@ -41,4 +12,23 @@ export function buildStorageKey(
   const timestamp = Date.now();
   const sanitized = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
   return `applications/${applicationId}/${timestamp}-${sanitized}`;
+}
+
+export async function saveFile(
+  storageKey: string,
+  buffer: Buffer
+): Promise<string> {
+  const filePath = path.join(UPLOAD_DIR, storageKey);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, buffer);
+  return filePath;
+}
+
+export async function readFile(storageKey: string): Promise<Buffer> {
+  const filePath = path.join(UPLOAD_DIR, storageKey);
+  return fs.readFile(filePath);
+}
+
+export function getLocalPath(storageKey: string): string {
+  return path.join(UPLOAD_DIR, storageKey);
 }

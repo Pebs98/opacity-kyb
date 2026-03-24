@@ -6,7 +6,11 @@ import {
 } from "./prompts/ubo-extraction";
 // EntityType is now a plain string in SQLite: "INDIVIDUAL" | "COMPANY" | "TRUST" | "FUND" | "OTHER"
 
-const anthropic = new Anthropic();
+function getAnthropicClient() {
+  return new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+  });
+}
 
 interface ExtractedEntityData {
   entityName: string;
@@ -50,7 +54,7 @@ export async function extractFromDocument(
   }
 
   try {
-    const message = await anthropic.messages.create({
+    const message = await getAnthropicClient().messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 4096,
       system: UBO_EXTRACTION_SYSTEM_PROMPT,
@@ -130,7 +134,64 @@ export async function extractFromDocument(
   }
 }
 
+export async function deduplicateEntities(applicationId: string) {
+  const entities = await db.extractedEntity.findMany({
+    where: { applicationId },
+  });
+
+  // Group by normalized name (case-insensitive, trimmed)
+  const groups = new Map<string, typeof entities>();
+  for (const entity of entities) {
+    const key = entity.entityName.trim().toLowerCase();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(entity);
+  }
+
+  for (const [, dupes] of groups) {
+    if (dupes.length <= 1) continue;
+
+    // Keep the one with highest confidence as canonical
+    dupes.sort((a, b) => b.confidence - a.confidence);
+    const keep = dupes[0];
+    const remove = dupes.slice(1);
+
+    for (const dup of remove) {
+      // Merge: take higher ownership if canonical has none
+      if (keep.ownershipPct === null && dup.ownershipPct !== null) {
+        await db.extractedEntity.update({
+          where: { id: keep.id },
+          data: { ownershipPct: dup.ownershipPct },
+        });
+      }
+      // Merge: promote to UBO if any duplicate was UBO
+      if (dup.isUbo && !keep.isUbo) {
+        await db.extractedEntity.update({
+          where: { id: keep.id },
+          data: { isUbo: true },
+        });
+      }
+      // Re-parent children of the duplicate to the canonical entity
+      await db.extractedEntity.updateMany({
+        where: { parentEntityId: dup.id },
+        data: { parentEntityId: keep.id },
+      });
+      // Re-parent the duplicate's own parent reference if canonical has none
+      if (!keep.parentEntityId && dup.parentEntityId && dup.parentEntityId !== keep.id) {
+        await db.extractedEntity.update({
+          where: { id: keep.id },
+          data: { parentEntityId: dup.parentEntityId },
+        });
+      }
+      // Delete the duplicate
+      await db.extractedEntity.delete({ where: { id: dup.id } });
+    }
+  }
+}
+
 export async function buildOrgStructure(applicationId: string) {
+  // Deduplicate before building the tree
+  await deduplicateEntities(applicationId);
+
   const entities = await db.extractedEntity.findMany({
     where: { applicationId },
     include: { childEntities: true },
@@ -183,17 +244,20 @@ export async function extractDocumentText(
   let text = "";
 
   if (fileType === "application/pdf") {
-    // Use pdf-parse for PDFs
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
-    const data = await pdfParse(fileBuffer);
-    text = data.text;
+    try {
+      const { extractText } = await import("unpdf");
+      const result = await extractText(new Uint8Array(fileBuffer));
+      text = result.text.join("\n\n");
+    } catch (pdfError) {
+      console.warn("pdf-parse failed, falling back to raw text:", pdfError);
+      text = fileBuffer.toString("utf-8");
+    }
   } else if (fileType.startsWith("image/")) {
     // Use Claude vision for images
     const base64 = fileBuffer.toString("base64");
     const mediaType = fileType as "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 
-    const message = await anthropic.messages.create({
+    const message = await getAnthropicClient().messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 4096,
       messages: [

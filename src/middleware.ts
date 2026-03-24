@@ -15,7 +15,8 @@ export async function middleware(req: NextRequest) {
   // Check JWT token (works in Edge Runtime, no Prisma needed)
   const token = await getToken({
     req,
-    secret: process.env.AUTH_SECRET,
+    secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
+    secureCookie: false,
   });
 
   if (!token) {

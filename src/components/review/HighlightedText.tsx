@@ -18,13 +18,44 @@ interface HighlightedTextProps {
   onEntityClick: (entityId: string) => void;
 }
 
-const TYPE_COLORS: Record<string, { bg: string; border: string; text: string }> = {
-  INDIVIDUAL: { bg: "bg-green-100", border: "border-green-300", text: "text-green-800" },
-  COMPANY: { bg: "bg-blue-100", border: "border-blue-300", text: "text-blue-800" },
-  TRUST: { bg: "bg-orange-100", border: "border-orange-300", text: "text-orange-800" },
-  FUND: { bg: "bg-purple-100", border: "border-purple-300", text: "text-purple-800" },
-  OTHER: { bg: "bg-zinc-100", border: "border-zinc-300", text: "text-zinc-800" },
-};
+/*
+ * Color-coding logic (optimized for accuracy, then speed):
+ *
+ * PRIMARY SIGNAL: Confidence level (what the reviewer needs to verify)
+ *   - Green  (>70%): High confidence — likely correct, quick glance
+ *   - Amber  (40-70%): Medium — needs careful review
+ *   - Red    (<40%): Low confidence — needs manual verification
+ *
+ * SECONDARY SIGNAL: Entity type (shape of the border)
+ *   - Solid border: Company/Fund (legal entities)
+ *   - Dashed border: Individual (natural persons)
+ *   - Dotted border: Trust/Other (special structures)
+ *
+ * TERTIARY SIGNAL: UBO status
+ *   - Bold text + red left border stripe for identified UBOs
+ */
+
+function getConfidenceColors(confidence: number) {
+  if (confidence > 0.7) {
+    return { bg: "bg-green-100", border: "border-green-400", text: "text-green-900" };
+  }
+  if (confidence > 0.4) {
+    return { bg: "bg-amber-100", border: "border-amber-400", text: "text-amber-900" };
+  }
+  return { bg: "bg-red-100", border: "border-red-400", text: "text-red-900" };
+}
+
+function getBorderStyle(entityType: string): string {
+  switch (entityType) {
+    case "INDIVIDUAL":
+      return "border-dashed";
+    case "TRUST":
+    case "OTHER":
+      return "border-dotted";
+    default: // COMPANY, FUND
+      return "border-solid";
+  }
+}
 
 export function HighlightedText({
   text,
@@ -33,7 +64,6 @@ export function HighlightedText({
   onEntityClick,
 }: HighlightedTextProps) {
   const highlights = useMemo(() => {
-    // Find all entity source text positions in the document text
     const matches: {
       start: number;
       end: number;
@@ -58,10 +88,8 @@ export function HighlightedText({
       }
     }
 
-    // Sort by start position
     matches.sort((a, b) => a.start - b.start);
 
-    // Build segments (non-overlapping)
     const segments: {
       text: string;
       entity: Entity | null;
@@ -69,7 +97,7 @@ export function HighlightedText({
 
     let cursor = 0;
     for (const match of matches) {
-      if (match.start < cursor) continue; // skip overlapping
+      if (match.start < cursor) continue;
       if (match.start > cursor) {
         segments.push({ text: text.slice(cursor, match.start), entity: null });
       }
@@ -93,19 +121,21 @@ export function HighlightedText({
           return <span key={i}>{segment.text}</span>;
         }
 
-        const colors = TYPE_COLORS[segment.entity.entityType] || TYPE_COLORS.OTHER;
+        const colors = getConfidenceColors(segment.entity.confidence);
+        const borderStyle = getBorderStyle(segment.entity.entityType);
         const isSelected = segment.entity.id === selectedEntityId;
+        const isUbo = segment.entity.isUbo;
 
         return (
           <span
             key={i}
             id={`source-${segment.entity.id}`}
             onClick={() => onEntityClick(segment.entity!.id)}
-            className={`cursor-pointer rounded border px-0.5 transition-all ${colors.bg} ${colors.border} ${colors.text} ${
+            className={`cursor-pointer rounded border px-0.5 transition-all ${colors.bg} ${colors.border} ${colors.text} ${borderStyle} ${
               isSelected ? "ring-2 ring-blue-500 ring-offset-1" : ""
-            } ${segment.entity.isUbo ? "font-bold" : ""}`}
+            } ${isUbo ? "border-l-4 border-l-red-500 font-bold" : ""}`}
             title={`${segment.entity.entityName} (${segment.entity.entityType})${
-              segment.entity.isUbo ? " - UBO" : ""
+              isUbo ? " — UBO" : ""
             } | Confidence: ${(segment.entity.confidence * 100).toFixed(0)}%`}
           >
             {segment.text}
